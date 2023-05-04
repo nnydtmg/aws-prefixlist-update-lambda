@@ -130,6 +130,13 @@ def lambda_handler(event, context):
         if len(add_entries_list) > 0 or len(del_entries_list) > 0: 
             try:
                 update_prefix_entries(current_id, add_entries_list, del_entries_list, current_ver)
+                messages.append('<<<' + PREFIX_NAME + str(j+1).zfill(3) + ' is updated.>>>')
+                messages.append('<<<add_entries_list>>>')
+                messages.append(len(add_entries_list))
+                messages.append(add_entries_list)
+                messages.append('<<<del_entries_list>>>')
+                messages.append(len(del_entries_list))
+                messages.append(del_entries_list)
             except:
                 print('<<<' + PREFIX_NAME + str(j+1).zfill(3) + ' is NOT updated.>>>')
 
