@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import boto3
+import ipaddress
 import json
 import urllib.request
 
@@ -15,9 +16,19 @@ sns = boto3.client('sns', region_name=BASE_REGION)
 def get_ip_ranges(URL):
     # ip-ranges.jsonを取得
     req = urllib.request.Request(URL)
-    with urllib.request.urlopen(req) as res:
+    # タイムアウトを付けて、応答がない場合に Lambda が実行時間いっぱいまで待たないようにする
+    with urllib.request.urlopen(req, timeout=10) as res:
         ipranges = json.load(res)
     return ipranges
+
+def validate_prefixes(prefixes):
+    # 取得結果が空・不正な場合は更新を中止する。
+    # 空のまま進むと、プレフィックスリストの全エントリが削除対象になってしまう。
+    if not prefixes:
+        raise ValueError('ip-ranges.json から対象のプレフィックスを取得できませんでした')
+    for prefix in prefixes:
+        # CIDR として不正な値は ValueError になる
+        ipaddress.ip_network(prefix)
 
 def get_new_ip_prefix(ipranges, region, service):
     new_prefix = []
@@ -74,6 +85,7 @@ def lambda_handler(event, context):
     
     # 必要なprefixを抽出
     ips_apne1_amazon = get_new_ip_prefix(ipranges, 'ap-northeast-1', 'AMAZON')
+    validate_prefixes(ips_apne1_amazon)
     ips_global_amazon = get_new_ip_prefix(ipranges, 'GLOBAL', 'AMAZON')
     ips_uset1_amazon = get_new_ip_prefix(ipranges, 'us-east-1', 'AMAZON')
     ips_uswt2_amazon = get_new_ip_prefix(ipranges, 'us-west-2', 'AMAZON')
@@ -137,8 +149,10 @@ def lambda_handler(event, context):
                 messages.append('<<<del_entries_list>>>')
                 messages.append(len(del_entries_list))
                 messages.append(del_entries_list)
-            except:
-                print('<<<' + PREFIX_NAME + str(j+1).zfill(3) + ' is NOT updated.>>>')
+            except Exception as e:
+                # 失敗を握りつぶさず、原因をログと通知に残す
+                print('<<<' + PREFIX_NAME + str(j+1).zfill(3) + ' is NOT updated.>>> ' + str(e))
+                messages.append('<<<' + PREFIX_NAME + str(j+1).zfill(3) + ' is NOT updated.>>> ' + str(e))
 
     # SNS送信
     response = sns.publish(
